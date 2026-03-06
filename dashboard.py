@@ -1,10 +1,11 @@
 import json
+import requests
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from pathlib import Path
-from testset import load_testset
+from ingest import ingest_pdf, get_collection, get_model
+from testset import load_testset, generate_testset, save_testset
 from benchmark import run_benchmark, save_results
 
 st.set_page_config(
@@ -15,6 +16,49 @@ st.set_page_config(
 
 RESULTS_FILE = "benchmark_results.json"
 
+
+# ============================================================
+# Auto setup — runs FIRST before anything else
+# ============================================================
+
+def auto_setup():
+    """Download PDFs and build index on first run."""
+    if Path("chroma_db").exists():
+        return
+
+    st.info("⏳ First run — setting up. Takes ~60 seconds.")
+
+    docs = {
+        "japan_culture.pdf": "Culture_of_Japan",
+        "india_culture.pdf": "Culture_of_India",
+        "france_culture.pdf": "Culture_of_France"
+    }
+
+    headers = {"User-Agent": "Mozilla/5.0"}
+    for filename, article in docs.items():
+        if not Path(filename).exists():
+            with st.spinner(f"Downloading {filename}..."):
+                url = (
+                    f"https://en.wikipedia.org/api/"
+                    f"rest_v1/page/pdf/{article}"
+                )
+                r = requests.get(url, headers=headers)
+                open(filename, "wb").write(r.content)
+
+    with st.spinner("Indexing documents..."):
+        for filename in docs.keys():
+            ingest_pdf(filename, filename)
+
+    st.success("✅ Setup complete!")
+    st.rerun()
+
+
+auto_setup()
+
+
+# ============================================================
+# Helpers
+# ============================================================
 
 def load_results() -> dict:
     if not Path(RESULTS_FILE).exists():
@@ -41,21 +85,18 @@ with st.sidebar:
         use_container_width=True,
         type="primary"
     ):
-        try:
+        # Generate testset if missing
+        if not Path("testset.json").exists():
+            with st.spinner(
+                "Generating test questions..."
+            ):
+                testset = generate_testset(
+                    questions_per_doc=10
+                )
+                save_testset(testset)
+        else:
             testset = load_testset()
-        except FileNotFoundError:
-            st.error(
-                "No testset found. "
-                "Run: python testset.py first"
-            )
-            st.stop()
 
-        progress = st.progress(0)
-        status   = st.empty()
-
-        results_container = []
-
-        # Run with progress updates
         with st.spinner(
             f"Evaluating {max_q} questions..."
         ):
@@ -65,9 +106,8 @@ with st.sidebar:
                 max_questions=max_q
             )
             save_results(benchmark)
-            progress.progress(1.0)
-            status.success("Benchmark complete!")
 
+        st.success("Benchmark complete!")
         st.rerun()
 
     st.divider()
@@ -75,13 +115,11 @@ with st.sidebar:
     results = load_results()
     if results:
         s = results["summary"]
-        st.caption(
-            f"Last run: "
-            f"{s['timestamp'][:10]}"
-        )
+        st.caption(f"Last run: {s['timestamp'][:10]}")
         st.caption(
             f"{s['total_questions']} questions evaluated"
         )
+
 
 # ============================================================
 # Main dashboard
@@ -98,7 +136,7 @@ results = load_results()
 if not results:
     st.info(
         "No benchmark results yet. "
-        "Click **Run Benchmark** in the sidebar."
+        "Click **▶ Run Benchmark** in the sidebar to start."
     )
     st.stop()
 
@@ -106,7 +144,7 @@ summary = results["summary"]
 rows    = results["results"]
 
 # ============================================================
-# Top metrics row
+# Top metrics
 # ============================================================
 
 st.subheader("Overall Scores")
@@ -119,21 +157,18 @@ with c1:
         f"{summary['avg_overall']:.3f}",
         help="Average of all three metrics"
     )
-
 with c2:
     st.metric(
         "Faithfulness",
         f"{summary['avg_faithfulness']:.3f}",
         help="Answer grounded in retrieved context"
     )
-
 with c3:
     st.metric(
         "Answer Relevance",
         f"{summary['avg_relevance']:.3f}",
         help="Answer addresses the question"
     )
-
 with c4:
     st.metric(
         "Context Precision",
@@ -144,16 +179,14 @@ with c4:
 st.divider()
 
 # ============================================================
-# Charts row
+# Charts
 # ============================================================
 
 col1, col2 = st.columns(2)
 
 with col1:
     st.subheader("Score Distribution")
-
     df = pd.DataFrame(rows)
-
     fig = px.histogram(
         df,
         x="overall",
@@ -173,7 +206,6 @@ with col1:
 
 with col2:
     st.subheader("Metrics Comparison")
-
     metrics_df = pd.DataFrame({
         "Metric": [
             "Faithfulness",
@@ -186,7 +218,6 @@ with col2:
             summary["avg_precision"]
         ]
     })
-
     fig2 = px.bar(
         metrics_df,
         x="Metric",
@@ -216,7 +247,6 @@ if doc_breakdown:
         {"Document": doc, "Score": score}
         for doc, score in doc_breakdown.items()
     ])
-
     fig3 = px.bar(
         doc_df,
         x="Document",
@@ -236,14 +266,14 @@ if doc_breakdown:
 st.divider()
 
 # ============================================================
-# Score over questions — trend line
+# Score trend
 # ============================================================
 
 st.subheader("Score Trend")
 
 trend_df = pd.DataFrame([
     {
-        "Question #": i + 1,
+        "Question #":        i + 1,
         "Faithfulness":      r["faithfulness"],
         "Answer Relevance":  r["answer_relevance"],
         "Context Precision": r["context_precision"],
@@ -274,7 +304,7 @@ st.plotly_chart(fig4, use_container_width=True)
 st.divider()
 
 # ============================================================
-# Detailed results table
+# Results table
 # ============================================================
 
 st.subheader("Question-Level Results")
@@ -292,7 +322,6 @@ table_df = pd.DataFrame([
     for r in rows
 ])
 
-# Color overall score
 st.dataframe(
     table_df,
     use_container_width=True,
@@ -344,7 +373,7 @@ with col1:
             )
 
 with col2:
-    st.subheader(" Worst Answered Questions")
+    st.subheader("⚠️ Worst Answered Questions")
     for r in sorted_rows[-3:]:
         with st.expander(
             f"{r['overall']:.2f} — "
@@ -359,7 +388,7 @@ with col2:
             )
 
 # ============================================================
-# Latency stats
+# Latency
 # ============================================================
 
 st.divider()
@@ -377,39 +406,3 @@ with lc2:
     st.metric("Fastest", f"{min(latencies):.0f}ms")
 with lc3:
     st.metric("Slowest", f"{max(latencies):.0f}ms")
-
-
-from ingest import ingest_pdf
-from pathlib import Path
-import requests
-
-def auto_setup():
-    """Download PDFs and build index on first run."""
-    if Path("chroma_db").exists():
-        return
-
-    st.info("⏳ First run — setting up. Takes ~60 seconds.")
-
-    docs = {
-        "japan_culture.pdf": "Culture_of_Japan",
-        "india_culture.pdf": "Culture_of_India",
-        "france_culture.pdf": "Culture_of_France"
-    }
-
-    headers = {"User-Agent": "Mozilla/5.0"}
-    for filename, article in docs.items():
-        if not Path(filename).exists():
-            with st.spinner(f"Downloading {filename}..."):
-                url = (f"https://en.wikipedia.org/api/"
-                       f"rest_v1/page/pdf/{article}")
-                r = requests.get(url, headers=headers)
-                open(filename, "wb").write(r.content)
-
-    with st.spinner("Indexing documents..."):
-        for filename in docs.keys():
-            ingest_pdf(filename, filename)
-
-    st.success("✅ Setup complete! Run benchmark now.")
-    st.rerun()
-
-auto_setup()    
