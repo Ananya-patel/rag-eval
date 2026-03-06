@@ -1,0 +1,205 @@
+# ◆ RAG Evaluation System
+
+
+> Project 8 of my RAG Mastery Journey — The Final Project
+
+An automated evaluation system that measures RAG quality 
+objectively across three metrics: faithfulness, answer 
+relevance, and context precision. No more guessing if your 
+RAG system is good — now you have numbers.
+
+---
+
+##  Live Results
+
+### Overall Scores — 10 Questions Evaluated
+
+![Dashboard Overview](screenshots/dashboard_overview.png)
+
+| Metric | Score |
+|---|---|
+| **Overall** | 0.710 |
+| **Faithfulness** | 1.000 |
+| **Answer Relevance** | 0.900 |
+| **Context Precision** | 0.230 |
+
+> **Key finding:** The system never hallucinates 
+> (faithfulness = 1.0) and almost always addresses 
+> the question (relevance = 0.9). The weak point is 
+> context precision (0.23) — retrieved chunks contain 
+> noise. This tells us exactly where to improve: 
+> better chunking or higher similarity thresholds.
+
+---
+
+### Score Distribution & Metrics Comparison
+
+![Score Distribution](screenshots/score_distribution.png)
+
+Most questions score between 0.67 and 0.83. 
+The distribution shows a consistent system — 
+no random failures, predictable quality.
+
+---
+
+### Per-Document Performance
+
+![Per Document](screenshots/per_document.png)
+
+Japan culture document scores 0.71 overall across 
+10 questions. Running with all 3 documents would 
+show comparative performance per knowledge base.
+
+---
+
+### Score Trend Across All Questions
+
+![Score Trend](screenshots/score_trend.png)
+
+Faithfulness (blue) stays flat at 1.0 — the system 
+never hallucinates regardless of question difficulty.
+Overall score (red) trends upward as questions get 
+easier to answer from context.
+Context Precision (pink) is the most variable metric —
+some questions retrieve perfectly relevant chunks, 
+others retrieve noisy chunks.
+
+---
+
+### Question-Level Results Table
+
+![Results Table](screenshots/results_table.png)
+
+Every question scored individually. Faithfulness = 1.0 
+across all questions. Context precision is the 
+differentiator — questions with 0.5 precision score 
+0.83 overall, questions with 0.0 precision score 0.67.
+
+---
+
+### Best and Worst Questions + Latency
+
+![Best Worst](screenshots/best_worst.png)
+
+| | Score | Question |
+|---|---|---|
+|  Best | 0.83 | Ancestry percentage from Jōmon people |
+|  Worst | 0.33 | What year did Japan adopt kanji from China? |
+
+**Latency:** Average 2105ms · Fastest 652ms · Slowest 8133ms
+
+The worst question (kanji adoption year) scored low 
+because it asks for a specific date — the retrieved 
+chunks contained the topic but not the exact year, 
+causing low context precision and answer relevance.
+
+---
+
+##  What This System Measures
+
+### Faithfulness (1.000)
+Does the answer use ONLY the retrieved context?
+A score of 1.0 means zero hallucination across all 
+10 questions. The grounding prompt works perfectly.
+
+### Answer Relevance (0.900)
+Does the answer actually address the question?
+0.9 means 9 out of 10 questions were directly answered.
+The one miss was a specific date question where context 
+lacked the exact information needed.
+
+### Context Precision (0.230)
+Of the retrieved chunks, how many were actually useful?
+0.23 is the clear weak point. With top_k=3, many 
+retrieved chunks were tangentially related but not 
+directly used in the answer. Fix: increase similarity 
+threshold or reduce top_k to 2.
+
+---
+
+##  Architecture
+```
+testset.py    → generate Q&A pairs from documents
+metrics.py    → faithfulness, relevance, precision
+benchmark.py  → run evaluation across all questions  
+dashboard.py  → Streamlit visualization
+```
+
+---
+
+##  Key Concepts Learned
+
+| Concept | What it means |
+|---|---|
+| LLM-as-judge | Use LLM to score answers objectively |
+| Faithfulness | Zero hallucination = 1.0 |
+| Answer relevance | Did you answer what was asked? |
+| Context precision | Was your retrieval focused or noisy? |
+| Test set generation | Documents write their own test cases |
+| Benchmark | 30 questions, objective scores, no guessing |
+| Evaluation loop | RAG pipeline → score → improve → repeat |
+
+---
+
+##  What The Results Tell You
+```
+Faithfulness 1.00  → Grounding prompt works perfectly
+Relevance    0.90  → Agent answers the right question
+Precision    0.23  → Retrieval is noisy — top_k too high
+
+Fix: reduce top_k from 3 to 2
+     increase min_similarity from 0.35 to 0.45
+     Expected improvement: precision 0.23 → 0.45+
+```
+
+This is the value of evaluation — you don't guess what 
+to fix. The numbers tell you exactly where the system 
+is weak and what to change.
+
+---
+
+##  Run Locally
+```bash
+git clone https://github.com/YOUR_USERNAME/rag-eval.git
+cd rag-eval
+python -m venv venv
+venv\Scripts\activate
+pip install -r requirements.txt
+```
+
+Add `.env`:
+```
+GROQ_API_KEY=your-groq-key-here
+```
+```bash
+# Step 1 — Index documents
+python ingest.py
+
+# Step 2 — Generate test questions
+python testset.py
+
+# Step 3 — Run benchmark
+python benchmark.py
+
+# Step 4 — View dashboard
+streamlit run dashboard.py
+```
+
+---
+
+## 🗺️ RAG Mastery Journey
+
+| Project | Topic | Status |
+|---|---|---|
+| Project 1 | Document Analysis Using LLMs | ✅ Complete |
+| Project 2 | RAG System From Scratch | ✅ Complete |
+| Project 3 | Multi-Document RAG | ✅ Complete |
+| Project 4 | GraphRAG Pipeline | ✅ Complete |
+| Project 5 | Agentic RAG System | ✅ Complete |
+| Project 6 | Real-Time RAG Assistant | ✅ Complete |
+| Project 7 | Production RAG API | ✅ Complete |
+| **Project 8** | **RAG Evaluation System** | ✅ **Complete** |
+
+---
+
+*You can't improve what you can't measure.*

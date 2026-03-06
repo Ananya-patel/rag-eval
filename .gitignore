@@ -1,0 +1,9 @@
+venv/
+.env
+__pycache__/
+*.pyc
+*.pdf
+chroma_db/
+testset.json
+benchmark_results.json
+.streamlit/
