@@ -344,7 +344,7 @@ with col1:
             )
 
 with col2:
-    st.subheader("⚠️ Worst Answered Questions")
+    st.subheader(" Worst Answered Questions")
     for r in sorted_rows[-3:]:
         with st.expander(
             f"{r['overall']:.2f} — "
@@ -377,3 +377,39 @@ with lc2:
     st.metric("Fastest", f"{min(latencies):.0f}ms")
 with lc3:
     st.metric("Slowest", f"{max(latencies):.0f}ms")
+
+
+from ingest import ingest_pdf
+from pathlib import Path
+import requests
+
+def auto_setup():
+    """Download PDFs and build index on first run."""
+    if Path("chroma_db").exists():
+        return
+
+    st.info("⏳ First run — setting up. Takes ~60 seconds.")
+
+    docs = {
+        "japan_culture.pdf": "Culture_of_Japan",
+        "india_culture.pdf": "Culture_of_India",
+        "france_culture.pdf": "Culture_of_France"
+    }
+
+    headers = {"User-Agent": "Mozilla/5.0"}
+    for filename, article in docs.items():
+        if not Path(filename).exists():
+            with st.spinner(f"Downloading {filename}..."):
+                url = (f"https://en.wikipedia.org/api/"
+                       f"rest_v1/page/pdf/{article}")
+                r = requests.get(url, headers=headers)
+                open(filename, "wb").write(r.content)
+
+    with st.spinner("Indexing documents..."):
+        for filename in docs.keys():
+            ingest_pdf(filename, filename)
+
+    st.success("✅ Setup complete! Run benchmark now.")
+    st.rerun()
+
+auto_setup()    
